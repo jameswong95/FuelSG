@@ -6,13 +6,12 @@ from datetime import datetime, date
 
 app = Flask(__name__, template_folder="templates")
 
-PRICE_FILE = os.path.join(os.path.dirname(__file__), "price_cache.json")
-CACHE_TTL = 86400  # 24 hours — refresh daily
+CACHE_TTL = 86400  # 24 hours
+_memory_cache = {"data": None, "date": None}
 
-# ── Reference prices (Mar 2026, SGD/litre) ────────────────────────────
+# Reference prices (Mar 2026, SGD/litre)
 REFERENCE_PRICES = {
     "Shell": {
-        "92": None,
         "95": 3.40,
         "98": 3.92,
         "V-Power 98": 4.14,
@@ -37,7 +36,6 @@ REFERENCE_PRICES = {
         "Diesel": 3.93,
     },
     "BP": {
-        "92": None,
         "95": 3.41,
         "98": 3.92,
         "Diesel": 3.93,
@@ -45,14 +43,9 @@ REFERENCE_PRICES = {
     "Sinopec": {
         "92": 3.30,
         "95": 3.35,
-        "98": None,
         "Diesel": 3.65,
     },
 }
-
-# Remove None entries
-for s in REFERENCE_PRICES:
-    REFERENCE_PRICES[s] = {k: v for k, v in REFERENCE_PRICES[s].items() if v is not None}
 
 STATION_COLORS = {
     "Shell": "#e2231a",
@@ -110,32 +103,10 @@ def try_scrape_spc():
         return None
 
 
-def load_cache():
-    try:
-        if os.path.exists(PRICE_FILE):
-            with open(PRICE_FILE, "r") as f:
-                data = json.load(f)
-            cache_date = data.get("cache_date", "")
-            if cache_date == str(date.today()):
-                return data
-    except Exception:
-        pass
-    return None
-
-
-def save_cache(data):
-    try:
-        data["cache_date"] = str(date.today())
-        with open(PRICE_FILE, "w") as f:
-            json.dump(data, f)
-    except Exception as e:
-        print("Cache save error:", e)
-
-
 def get_prices():
-    cached = load_cache()
-    if cached:
-        return cached
+    today = str(date.today())
+    if _memory_cache["data"] and _memory_cache["date"] == today:
+        return _memory_cache["data"]
 
     data = {"stations": {}, "updated": datetime.now().strftime("%d %b %Y %H:%M"),
             "note": "Pump prices before member/card discounts. Updated daily."}
@@ -161,7 +132,8 @@ def get_prices():
             "color": STATION_COLORS[name],
         }
 
-    save_cache(data)
+    _memory_cache["data"] = data
+    _memory_cache["date"] = today
     return data
 
 
@@ -177,9 +149,8 @@ def prices():
 
 @app.route("/api/prices/refresh", methods=["POST"])
 def prices_refresh():
-    """Force refresh — delete cache and re-fetch."""
-    if os.path.exists(PRICE_FILE):
-        os.remove(PRICE_FILE)
+    _memory_cache["data"] = None
+    _memory_cache["date"] = None
     return jsonify(get_prices())
 
 
@@ -205,7 +176,6 @@ def search():
             if addr in seen:
                 continue
             seen.add(addr)
-            # Build clean label
             parts = []
             blk = item.get("BLK_NO", "").strip()
             road = item.get("ROAD_NAME", "").strip()
@@ -241,7 +211,6 @@ def routes():
         dlon = request.args.get("dlon")
         efficiency = float(request.args.get("efficiency", 12.0))
 
-        # Try OSRM public API with alternatives=true
         url = (
             f"http://router.project-osrm.org/route/v1/driving/"
             f"{slon},{slat};{dlon},{dlat}"
@@ -250,9 +219,6 @@ def routes():
         r = requests.get(url, timeout=15)
         data = r.json()
         osrm_routes = data.get("routes", [])
-
-        # If OSRM only gives 1-2, pad with slight variations via waypoints
-        # (OSRM alternative routing depends on the geometry having genuine alternatives)
 
         colors = ["#4f46e5", "#0891b2", "#059669", "#d97706"]
         labels = ["Recommended", "Alternative 1", "Alternative 2", "Alternative 3"]
@@ -281,5 +247,5 @@ def routes():
 
 
 if __name__ == "__main__":
-    print("FuelSG v3 running on http://localhost:5000")
+    print("FuelSG running on http://localhost:5000")
     app.run(debug=False, host="0.0.0.0", port=5000)
