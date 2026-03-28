@@ -1,4 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <rect width="32" height="32" rx="6" fill="#1e293b"/>
-  <text x="16" y="24" font-size="20" text-anchor="middle" font-family="serif">?</text>
+  <!-- pump body -->
+  <rect x="5" y="10" width="14" height="16" rx="2" fill="#f97316"/>
+  <!-- pump screen -->
+  <rect x="7" y="12" width="10" height="5" rx="1" fill="#1e293b"/>
+  <!-- pump nozzle holder -->
+  <rect x="19" y="10" width="3" height="9" rx="1" fill="#94a3b8"/>
+  <!-- nozzle tip -->
+  <rect x="21" y="19" width="5" height="2.5" rx="1" fill="#94a3b8"/>
+  <!-- base -->
+  <rect x="4" y="25" width="16" height="2" rx="1" fill="#e2e8f0"/>
 </svg>
