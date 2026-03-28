@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>FuelSG</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+         background:#f1f5f9;color:#1e293b;font-size:15px}
+    header{background:#1e293b;color:#fff;padding:12px 18px;
+           display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+    header h1{font-size:1.1rem;font-weight:700}
+    header span{font-size:.75rem;color:#94a3b8}
+    .page{max-width:1100px;margin:0 auto;padding:12px 12px 60px}
+    .card{background:#fff;border-radius:10px;padding:14px;
+          margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.07)}
+    .card-title{font-size:.85rem;font-weight:700;color:#334155;
+                margin-bottom:10px;display:flex;align-items:center;gap:5px}
+
+    /* Car */
+    .sel-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    select{width:100%;padding:9px 10px;border:1px solid #e2e8f0;border-radius:7px;
+           font-size:.87rem;background:#fff;outline:none;color:#1e293b}
+    select:focus{border-color:#4f46e5}
+    select:disabled{background:#f8fafc;color:#94a3b8}
+    .car-info{margin-top:8px;display:none;background:#eef2ff;border-radius:7px;
+              padding:7px 11px;font-size:.8rem;color:#4338ca}
+    .car-info.show{display:block}
+    .phev-note{font-size:.72rem;color:#92400e;background:#fef3c7;border-radius:5px;
+               padding:3px 7px;margin-top:4px;display:none}
+    .phev-note.show{display:block}
+
+    /* Fuel type pills */
+    .fuel-pills{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+    .pill{padding:6px 14px;border-radius:20px;border:2px solid #e2e8f0;
+          background:#fff;font-size:.8rem;cursor:pointer;font-weight:600;color:#64748b}
+    .pill:hover:not(:disabled){border-color:#4f46e5;color:#4f46e5}
+    .pill.on{border-color:#4f46e5;background:#4f46e5;color:#fff}
+    .pill:disabled{opacity:.3;cursor:not-allowed}
+
+    /* Station selector */
+    .station-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px}
+    .st-toggle{display:flex;align-items:center;gap:6px;padding:7px 10px;border-radius:8px;
+               border:2px solid #e2e8f0;cursor:pointer;font-size:.8rem;font-weight:600;
+               color:#475569;user-select:none;transition:all .15s}
+    .st-toggle.on{color:#fff;border-color:transparent}
+    .st-toggle input{display:none}
+    .no-station-warn{font-size:.78rem;color:#ef4444;margin-top:8px;display:none;padding:4px 8px;
+                     background:#fef2f2;border-radius:6px}
+    .no-station-warn.show{display:block}
+
+    /* Location */
+    .loc-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .iw{position:relative}
+    .iw label{font-size:.73rem;color:#64748b;display:block;margin-bottom:3px;font-weight:600}
+    .loc-input-row{display:flex;gap:6px;align-items:center}
+    .iw input{flex:1;min-width:0;padding:9px 32px 9px 11px;border:1px solid #e2e8f0;
+              border-radius:7px;font-size:.87rem;outline:none}
+    .iw input:focus{border-color:#4f46e5;box-shadow:0 0 0 3px rgba(79,70,229,.08)}
+    .iw input.ok{border-color:#10b981;background:#f0fdf4}
+    .gps-btn{flex-shrink:0;padding:9px 10px;border:1px solid #e2e8f0;border-radius:7px;
+             background:#fff;cursor:pointer;font-size:.9rem;color:#64748b;line-height:1}
+    .gps-btn:hover{background:#f1f5f9;border-color:#4f46e5}
+    .gps-btn.loading{animation:spin 1s linear infinite;display:inline-block}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .iclr{position:absolute;right:8px;top:50%;transform:translateY(-50%);
+          color:#94a3b8;cursor:pointer;font-size:.85rem;display:none;
+          background:#fff;padding:2px}
+    .iclr.show{display:block}
+    .dd{position:fixed;z-index:9999;background:#fff;border:1px solid #e2e8f0;border-radius:8px;
+        box-shadow:0 6px 20px rgba(0,0,0,.15);max-height:200px;overflow-y:auto}
+    .ddi{padding:10px 12px;font-size:.82rem;cursor:pointer;
+         border-bottom:1px solid #f8fafc;line-height:1.4}
+    .ddi:last-child{border:none}
+    .ddi:hover{background:#f1f5f9}
+    .ddi-main{color:#1e293b;font-weight:500}
+    .ddi-sub{color:#94a3b8;font-size:.72rem}
+
+    /* Swap button */
+    .swap-row{display:flex;justify-content:center;margin-top:8px}
+    .swap-btn{padding:6px 16px;border:1px solid #e2e8f0;border-radius:20px;
+              background:#fff;cursor:pointer;font-size:.8rem;color:#64748b;font-weight:600}
+    .swap-btn:hover{background:#f1f5f9;border-color:#4f46e5;color:#4f46e5}
+
+    /* Map */
+    #map{height:360px;border-radius:10px;margin-bottom:12px;
+         box-shadow:0 1px 3px rgba(0,0,0,.07);display:none}
+    #map.show{display:block}
+
+    /* Route cards */
+    #routeCards{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));
+                gap:10px;margin-bottom:12px}
+    .rc{background:#fff;border-radius:10px;padding:13px;border:2px solid #e2e8f0;
+        cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.07);transition:all .15s}
+    .rc:hover{box-shadow:0 2px 8px rgba(0,0,0,.12)}
+    .rc.on{border-color:var(--c);box-shadow:0 0 0 3px color-mix(in srgb,var(--c) 18%,transparent)}
+    .rl{font-size:.75rem;font-weight:800;text-transform:uppercase;
+        letter-spacing:.04em;color:var(--c);margin-bottom:8px}
+    .rs{display:flex;flex-direction:column;gap:5px}
+    .sr{display:flex;gap:6px}
+    .sb{background:#f8fafc;border-radius:5px;padding:4px 6px;font-size:.78rem;
+        color:#475569;flex:1;text-align:center}
+    .sb strong{color:#1e293b;display:block;font-size:.88rem}
+    .cost{margin-top:6px;background:#eef2ff;border-radius:5px;padding:5px 8px;
+          font-size:.75rem;color:#4338ca;font-weight:600;display:none}
+    .cost.show{display:block}
+
+    /* Status */
+    .sbar{text-align:center;padding:8px;font-size:.82rem;color:#64748b;display:none}
+    .sbar.err{color:#ef4444}
+
+    /* Prices */
+    .ph{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+    .pm{font-size:.73rem;color:#94a3b8}
+    .pm.stale{color:#d97706}
+    .rbtn{font-size:.73rem;border:1px solid #e2e8f0;border-radius:5px;
+          padding:3px 8px;cursor:pointer;background:none;color:#64748b}
+    .rbtn:hover{background:#f1f5f9}
+    .pg{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+    .sc{border-radius:8px;border:1px solid #e2e8f0;overflow:hidden}
+    .sh{padding:8px 12px;font-weight:700;font-size:.82rem;color:#fff;
+        display:flex;justify-content:space-between;align-items:center}
+    .sb2{padding:6px 12px 10px}
+    .pr{display:flex;justify-content:space-between;align-items:center;
+        padding:5px 0;border-bottom:1px solid #f8fafc;font-size:.82rem}
+    .pr:last-child{border:none}
+    .pr.hl{background:#fffbeb;margin:0 -12px;padding:5px 12px}
+    .pv{font-weight:700;color:#1e293b}
+    .cheap{font-size:.68rem;color:#059669;margin-left:3px}
+    .blive{font-size:.63rem;background:rgba(255,255,255,.25);border-radius:3px;padding:1px 4px}
+    .bref{font-size:.63rem;background:rgba(0,0,0,.15);border-radius:3px;padding:1px 4px}
+    .pnote{font-size:.7rem;color:#94a3b8;margin-top:8px}
+
+    /* Spinner */
+    .spinner{display:inline-block;width:18px;height:18px;border:2px solid #e2e8f0;
+             border-top-color:#4f46e5;border-radius:50%;animation:spin .7s linear infinite;
+             vertical-align:middle;margin-right:6px}
+
+    @media(max-width:580px){
+      .sel-row,.loc-grid{grid-template-columns:1fr}
+      #map{height:300px}
+      .station-grid{grid-template-columns:repeat(3,1fr)}
+    }
+  </style>
+</head>
+<body>
+<header>
+  <h1>⛽ FuelSG</h1>
+  <span>Singapore fuel prices &amp; route planner</span>
+</header>
+<div class="page">
+
+<!-- ① Car + Fuel -->
+<div class="card">
+  <div class="card-title">🚗 Your Car</div>
+  <div class="sel-row">
+    <select id="selMake" onchange="onMake()"><option value="">— Make —</option></select>
+    <select id="selModel" onchange="onModel()" disabled><option value="">— Model —</option></select>
+  </div>
+  <div class="car-info" id="carInfo"></div>
+  <div class="phev-note" id="phevNote">⚡ PHEV: consumption shown is blended (engine + electric). Real-world figure depends on battery charge level.</div>
+  <div class="card-title" style="margin-top:12px;margin-bottom:6px">⛽ Fuel Grade You Use</div>
+  <div class="fuel-pills" id="fuelPills">
+    <button class="pill" data-f="92"  onclick="pickFuel('92')"     disabled>92</button>
+    <button class="pill" data-f="95"  onclick="pickFuel('95')"     disabled>95</button>
+    <button class="pill" data-f="98"  onclick="pickFuel('98')"     disabled>98</button>
+    <button class="pill" data-f="Diesel" onclick="pickFuel('Diesel')" disabled>Diesel</button>
+  </div>
+</div>
+
+<!-- ② Station selector -->
+<div class="card">
+  <div class="card-title">🏪 Preferred Stations</div>
+  <div class="station-grid" id="stationGrid"></div>
+  <div class="no-station-warn" id="noStWarn">⚠️ No stations selected — select at least one to compare prices.</div>
+</div>
+
+<!-- ③ Route planner -->
+<div class="card">
+  <div class="card-title">🗺 Route Planner</div>
+  <div class="loc-grid">
+    <div class="iw" id="wOrig">
+      <label>📍 Current Location</label>
+      <div class="loc-input-row">
+        <input id="iOrig" type="text" placeholder="Address or postal code"
+               autocomplete="off" oninput="onTyping('orig')"/>
+        <button class="gps-btn" onclick="useGPS()" title="Use my location">📍</button>
+      </div>
+      <span class="iclr" id="clrOrig" onclick="clrLoc('orig')">✕</span>
+      <div class="dd" id="ddOrig" style="display:none"></div>
+    </div>
+    <div class="iw" id="wDest">
+      <label>🏁 Destination</label>
+      <div class="loc-input-row">
+        <input id="iDest" type="text" placeholder="Address or postal code"
+               autocomplete="off" oninput="onTyping('dest')"/>
+      </div>
+      <span class="iclr" id="clrDest" onclick="clrLoc('dest')">✕</span>
+      <div class="dd" id="ddDest" style="display:none"></div>
+    </div>
+  </div>
+  <div class="swap-row">
+    <button class="swap-btn" onclick="swapLocations()">⇅ Swap</button>
+  </div>
+  <div class="sbar" id="sbar"></div>
+</div>
+
+<!-- Map -->
+<div id="map"></div>
+<!-- Route cards -->
+<div id="routeCards"></div>
+
+<!-- ④ Prices -->
+<div class="card">
+  <div class="ph">
+    <div class="card-title" style="margin-bottom:0">⛽ Fuel Prices (SGD/litre)</div>
+    <button class="rbtn" onclick="doRefresh()">↻ Refresh</button>
+  </div>
+  <div class="pm" id="pm"><span class="spinner"></span> Loading prices...</div>
+  <div class="pg" id="pg" style="margin-top:10px"></div>
+  <div class="pnote" id="pnote"></div>
+</div>
+
+</div>
+
+<!-- Dropdown positioned by JS to avoid mobile keyboard clipping -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ═══════════════════════════════════════════════════════
+//  CAR DATABASE  — 300+ SG models
+// ═══════════════════════════════════════════════════════
+const CARS={
+ "Alfa Romeo":{
+  "Giulia 2.0T":{l:8.5,f:"98"},"Giulia Quadrifoglio 2.9T":{l:12.0,f:"98"},
+  "Stelvio 2.0T":{l:9.2,f:"98"},"Tonale 1.5T Hybrid":{l:6.8,f:"98"}
+ },
+ "Audi":{
+  "A1 1.0 TFSI":{l:5.9,f:"98"},"A1 Sportback 1.5 TFSI":{l:6.2,f:"98"},
+  "A3 1.0 TFSI":{l:6.5,f:"98"},"A3 1.5 TFSI":{l:6.3,f:"98"},
+  "A3 Sportback 1.5 TFSI":{l:6.4,f:"98"},"A3 45 TFSI e PHEV":{l:2.2,f:"98",phev:true},
+  "A4 2.0 TFSI":{l:7.2,f:"98"},"A4 Allroad 2.0T":{l:8.2,f:"98"},
+  "A5 2.0 TFSI":{l:7.5,f:"98"},"A6 2.0 TFSI":{l:7.8,f:"98"},
+  "A6 55 TFSI e PHEV":{l:2.5,f:"98",phev:true},"A7 55 TFSI":{l:9.1,f:"98"},
+  "A8 60 TFSI e":{l:3.0,f:"98",phev:true},"Q2 1.0 TFSI":{l:6.8,f:"98"},
+  "Q3 1.5 TFSI":{l:7.4,f:"98"},"Q3 Sportback 1.5 TFSI":{l:7.6,f:"98"},
+  "Q5 2.0 TFSI":{l:8.5,f:"98"},"Q5 55 TFSI e PHEV":{l:2.6,f:"98",phev:true},
+  "Q7 3.0 TFSI":{l:10.2,f:"98"},"Q7 60 TFSI e":{l:3.1,f:"98",phev:true},
+  "Q8 3.0 TFSI":{l:11.0,f:"98"},"TT 2.0 TFSI":{l:8.2,f:"98"},
+  "RS3 2.5T":{l:10.5,f:"98"},"RS6 4.0T":{l:13.1,f:"98"},
+  "e-tron GT":{l:0,f:"Electric"},"Q4 e-tron":{l:0,f:"Electric"},
+  "Q8 e-tron":{l:0,f:"Electric"}
+ },
+ "BMW":{
+  "118i 1.5T":{l:6.5,f:"98"},"120i 2.0T":{l:7.0,f:"98"},
+  "218i Gran Coupe":{l:6.8,f:"98"},"218i Active Tourer":{l:7.0,f:"98"},
+  "220i Active Tourer":{l:7.2,f:"98"},"223i Active Tourer PHEV":{l:2.5,f:"98",phev:true},
+  "320i 2.0T":{l:7.2,f:"98"},"320e PHEV":{l:2.5,f:"98",phev:true},
+  "330i 2.0T":{l:7.6,f:"98"},"330e PHEV":{l:2.1,f:"98",phev:true},
+  "340i 3.0T":{l:9.0,f:"98"},"430i 2.0T":{l:7.8,f:"98"},
+  "520i 2.0T":{l:7.8,f:"98"},"530e PHEV":{l:2.3,f:"98",phev:true},
+  "530i 2.0T":{l:8.0,f:"98"},"540i 3.0T":{l:9.5,f:"98"},
+  "740e PHEV":{l:3.0,f:"98",phev:true},"M2 3.0T":{l:11.0,f:"98"},
+  "M3 3.0T":{l:11.5,f:"98"},"M4 3.0T":{l:11.2,f:"98"},
+  "X1 xDrive20i":{l:8.0,f:"98"},"X1 xDrive25e PHEV":{l:2.4,f:"98",phev:true},
+  "X2 sDrive18i":{l:7.5,f:"98"},"X3 xDrive20i":{l:8.5,f:"98"},
+  "X3 xDrive30e PHEV":{l:2.6,f:"98",phev:true},"X4 xDrive20i":{l:8.8,f:"98"},
+  "X5 xDrive40i":{l:10.5,f:"98"},"X5 xDrive45e PHEV":{l:3.1,f:"98",phev:true},
+  "X7 xDrive40i":{l:12.2,f:"98"},"Z4 2.0i":{l:8.0,f:"98"},
+  "iX1 Electric":{l:0,f:"Electric"},"i4 Electric":{l:0,f:"Electric"},
+  "iX Electric":{l:0,f:"Electric"}
+ },
+ "Chery":{
+  "Omoda 5 1.5T":{l:7.8,f:"95"},"Tiggo 7 Pro 1.5T":{l:8.2,f:"95"},
+  "Tiggo 8 Pro 2.0T":{l:9.0,f:"95"}
+ },
+ "Ford":{
+  "Ranger 2.0 Bi-Turbo Diesel":{l:9.8,f:"Diesel"},
+  "Ranger Raptor 3.0T V6":{l:13.5,f:"98"},
+  "Everest 2.0T Diesel":{l:10.5,f:"Diesel"},
+  "Mustang 5.0 V8":{l:14.5,f:"98"},"Mustang Mach-E":{l:0,f:"Electric"}
+ },
+ "Genesis":{
+  "G70 2.0T":{l:9.2,f:"98"},"G80 2.5T":{l:9.5,f:"98"},
+  "GV70 2.5T":{l:10.2,f:"98"},"GV80 2.5T":{l:10.5,f:"98"},
+  "GV60 Electric":{l:0,f:"Electric"},"Electrified G80":{l:0,f:"Electric"}
+ },
+ "Honda":{
+  "Civic 1.5T":{l:7.2,f:"95"},"Civic Type R 2.0T":{l:10.5,f:"98"},
+  "City 1.5":{l:7.0,f:"92"},"City RS 1.5":{l:7.2,f:"95"},
+  "City Hatchback 1.5":{l:7.0,f:"95"},
+  "Jazz 1.5 e:HEV":{l:4.5,f:"95"},"Jazz 1.5T":{l:6.8,f:"95"},
+  "HR-V 1.5T":{l:7.8,f:"95"},"HR-V e:HEV":{l:5.6,f:"95"},
+  "CR-V 1.5T":{l:7.9,f:"95"},"CR-V 2.0 e:HEV":{l:6.3,f:"95"},
+  "BR-V 1.5":{l:8.5,f:"92"},"Freed 1.5 Hybrid":{l:5.8,f:"95"},
+  "Vezel 1.5 e:HEV":{l:4.2,f:"95"},"Vezel 1.5":{l:5.8,f:"95"},
+  "Odyssey 2.4":{l:9.5,f:"95"},"Step WGN Spada 1.5T":{l:7.5,f:"95"},
+  "ZR-V 1.5T":{l:8.0,f:"95"},"e:NS1 Electric":{l:0,f:"Electric"}
+ },
+ "Hyundai":{
+  "Avante 1.6":{l:7.5,f:"95"},"Avante 1.6 Hybrid":{l:5.4,f:"95"},
+  "Avante N 2.0T":{l:10.5,f:"98"},"Elantra 2.0":{l:7.8,f:"95"},
+  "Elantra Hybrid":{l:4.7,f:"95"},"Elantra N 2.0T":{l:10.8,f:"98"},
+  "Tucson 1.6T":{l:8.0,f:"95"},"Tucson 1.6 Hybrid":{l:6.3,f:"95"},
+  "Tucson PHEV":{l:2.9,f:"95",phev:true},"Santa Fe 2.5T":{l:9.5,f:"95"},
+  "Santa Fe Hybrid":{l:6.9,f:"95"},"Santa Fe PHEV":{l:3.2,f:"95",phev:true},
+  "Palisade 3.8":{l:12.5,f:"95"},"Kona 1.0T":{l:7.5,f:"95"},
+  "Kona 1.6T N Line":{l:9.0,f:"98"},"Kona Electric":{l:0,f:"Electric"},
+  "Staria 3.5":{l:12.8,f:"95"},"Venue 1.0T":{l:7.5,f:"95"},
+  "Creta 1.5T":{l:8.2,f:"95"},"Ioniq 5":{l:0,f:"Electric"},
+  "Ioniq 6":{l:0,f:"Electric"},"Ioniq 5 N":{l:0,f:"Electric"}
+ },
+ "Jaguar":{
+  "F-Pace 2.0T P250":{l:9.2,f:"98"},"F-Pace 2.0D Diesel":{l:7.5,f:"Diesel"},
+  "XE 2.0T P250":{l:8.5,f:"98"},"F-Type 3.0T":{l:12.5,f:"98"},
+  "I-Pace Electric":{l:0,f:"Electric"}
+ },
+ "Kia":{
+  "Picanto 1.2":{l:6.9,f:"92"},"K3 1.5":{l:7.6,f:"95"},
+  "K5 1.6T":{l:7.8,f:"95"},"K5 2.0T":{l:9.5,f:"98"},
+  "Niro 1.6 Hybrid":{l:5.3,f:"95"},"Niro PHEV":{l:2.1,f:"95",phev:true},
+  "Niro Electric":{l:0,f:"Electric"},"Sportage 1.6T":{l:8.2,f:"95"},
+  "Sportage 1.6T Hybrid":{l:6.5,f:"95"},"Sportage PHEV":{l:2.5,f:"95",phev:true},
+  "Sorento 1.6T Hybrid":{l:7.8,f:"95"},"Sorento PHEV":{l:2.8,f:"95",phev:true},
+  "Carnival 2.2 Diesel":{l:9.1,f:"Diesel"},"Carnival 3.5":{l:12.5,f:"95"},
+  "Stinger 2.0T":{l:10.0,f:"95"},"Stinger 3.3T":{l:12.0,f:"98"},
+  "EV6":{l:0,f:"Electric"},"EV9":{l:0,f:"Electric"}
+ },
+ "Land Rover":{
+  "Defender 90 P300":{l:11.2,f:"98"},"Defender 110 P400e PHEV":{l:3.5,f:"98",phev:true},
+  "Discovery Sport P250":{l:9.5,f:"98"},"Discovery 3.0T":{l:12.5,f:"98"},
+  "Range Rover Evoque P250":{l:9.8,f:"98"},"Range Rover Evoque PHEV":{l:3.2,f:"98",phev:true},
+  "Range Rover Velar 2.0T":{l:10.2,f:"98"},"Range Rover Sport P530":{l:14.0,f:"98"},
+  "Range Rover P530":{l:15.0,f:"98"}
+ },
+ "Lexus":{
+  "UX 200 2.0":{l:7.5,f:"95"},"UX 250h Hybrid":{l:4.6,f:"95"},
+  "NX 200t 2.0T":{l:9.5,f:"98"},"NX 300h Hybrid":{l:6.0,f:"95"},
+  "NX 350h Hybrid":{l:5.8,f:"95"},"NX 450h+ PHEV":{l:2.6,f:"95",phev:true},
+  "RX 350 2.4T":{l:10.5,f:"98"},"RX 350h Hybrid":{l:6.2,f:"95"},
+  "RX 500h F Sport":{l:7.8,f:"98"},"RX 450h+ PHEV":{l:2.8,f:"95",phev:true},
+  "ES 300h Hybrid":{l:4.5,f:"95"},"IS 300h Hybrid":{l:5.1,f:"95"},
+  "LS 500h Hybrid":{l:7.8,f:"95"},"LX 600 3.5T":{l:14.5,f:"98"},
+  "LC 500h Hybrid":{l:7.4,f:"95"},"LC 500 5.0 V8":{l:12.8,f:"98"},
+  "UX 300e Electric":{l:0,f:"Electric"},"RZ 450e Electric":{l:0,f:"Electric"}
+ },
+ "Mazda":{
+  "Mazda2 1.5":{l:6.5,f:"95"},"Mazda3 2.0":{l:7.2,f:"95"},
+  "Mazda3 2.5T":{l:8.4,f:"98"},"Mazda3 Fastback 2.0":{l:7.4,f:"95"},
+  "Mazda6 2.5":{l:8.5,f:"95"},"CX-3 2.0":{l:7.5,f:"95"},
+  "CX-30 2.0":{l:7.7,f:"95"},"CX-30 2.0 Mild Hybrid":{l:7.2,f:"95"},
+  "CX-5 2.0":{l:7.8,f:"95"},"CX-5 2.5T":{l:9.2,f:"98"},
+  "CX-60 3.3T e-Skyactiv":{l:8.0,f:"98"},"CX-60 PHEV":{l:2.5,f:"98",phev:true},
+  "CX-8 2.5T":{l:9.5,f:"98"},"CX-80 3.3T":{l:9.8,f:"98"},
+  "MX-5 2.0":{l:8.1,f:"98"},"MX-30 R-EV PHEV":{l:2.1,f:"95",phev:true}
+ },
+ "Mercedes-Benz":{
+  "A200 1.3T":{l:6.8,f:"98"},"A250 2.0T AMG":{l:8.0,f:"98"},
+  "A35 AMG 2.0T":{l:9.5,f:"98"},"A45 S AMG 2.0T":{l:11.2,f:"98"},
+  "B200 1.3T":{l:6.9,f:"98"},"C200 1.5T":{l:6.9,f:"98"},
+  "C300 2.0T":{l:7.8,f:"98"},"C300e PHEV":{l:2.4,f:"98",phev:true},
+  "C43 AMG 2.0T":{l:10.2,f:"98"},"CLA 200 1.3T":{l:7.0,f:"98"},
+  "E200 2.0T":{l:7.5,f:"98"},"E300 2.0T":{l:8.0,f:"98"},
+  "E300e PHEV":{l:2.6,f:"98",phev:true},"GLA 200 1.3T":{l:7.5,f:"98"},
+  "GLA 250 2.0T":{l:8.2,f:"98"},"GLB 200 1.3T":{l:7.8,f:"98"},
+  "GLC 200 2.0T":{l:8.5,f:"98"},"GLC 300 2.0T":{l:8.8,f:"98"},
+  "GLC 300e PHEV":{l:2.9,f:"98",phev:true},"GLE 350 2.0T":{l:11.5,f:"98"},
+  "GLE 450 3.0T":{l:12.5,f:"98"},"S450 3.0T":{l:12.8,f:"98"},
+  "S580e PHEV":{l:3.2,f:"98",phev:true},"V220d Diesel":{l:9.5,f:"Diesel"},
+  "EQA Electric":{l:0,f:"Electric"},"EQB Electric":{l:0,f:"Electric"},
+  "EQC Electric":{l:0,f:"Electric"},"EQE Electric":{l:0,f:"Electric"},
+  "EQS Electric":{l:0,f:"Electric"}
+ },
+ "Mini":{
+  "Cooper 1.5T":{l:6.5,f:"98"},"Cooper S 2.0T":{l:7.8,f:"98"},
+  "Cooper JCW 2.0T":{l:8.5,f:"98"},"Countryman 1.5T":{l:7.0,f:"98"},
+  "Countryman Cooper S 2.0T":{l:8.2,f:"98"},"Countryman PHEV":{l:2.5,f:"98",phev:true},
+  "Clubman S 2.0T":{l:7.5,f:"98"},"Electric":{l:0,f:"Electric"}
+ },
+ "Mitsubishi":{
+  "ASX 2.0":{l:8.2,f:"92"},"Eclipse Cross 1.5T":{l:8.5,f:"95"},
+  "Eclipse Cross PHEV":{l:1.9,f:"95",phev:true},"Outlander 2.4 PHEV":{l:2.3,f:"95",phev:true},
+  "Outlander 2.5":{l:9.5,f:"95"},"Xpander 1.5":{l:8.8,f:"92"},
+  "Triton 2.4 Diesel":{l:11.5,f:"Diesel"}
+ },
+ "Nissan":{
+  "Almera 1.0T":{l:7.0,f:"92"},"Sylphy 1.6":{l:7.8,f:"95"},
+  "Sylphy e-Power":{l:5.5,f:"95"},"Kicks 1.0T":{l:7.5,f:"95"},
+  "Kicks e-Power":{l:5.8,f:"95"},"Serena 2.0 e-Power":{l:7.2,f:"95"},
+  "X-Trail 1.5T":{l:8.0,f:"95"},"X-Trail e-Power":{l:6.8,f:"95"},
+  "Navara 2.3 Diesel":{l:10.5,f:"Diesel"},"GT-R 3.8T":{l:13.5,f:"98"},
+  "Leaf Electric":{l:0,f:"Electric"},"Ariya Electric":{l:0,f:"Electric"}
+ },
+ "Porsche":{
+  "Cayenne 3.0T":{l:10.9,f:"98"},"Cayenne E-Hybrid":{l:3.2,f:"98",phev:true},
+  "Macan 2.0T P265":{l:9.2,f:"98"},"Panamera 2.9T":{l:11.5,f:"98"},
+  "Panamera 4S E-Hybrid":{l:3.0,f:"98",phev:true},
+  "911 Carrera 3.0T":{l:10.4,f:"98"},"718 Cayman 2.0T":{l:9.0,f:"98"},
+  "Taycan Electric":{l:0,f:"Electric"},"Macan Electric":{l:0,f:"Electric"}
+ },
+ "Subaru":{
+  "XV 2.0 e-Boxer":{l:6.7,f:"95"},"Forester 2.0 e-Boxer":{l:7.5,f:"95"},
+  "Outback 2.5":{l:8.8,f:"95"},"Levorg 1.8T":{l:8.5,f:"95"},
+  "WRX 2.4T":{l:11.2,f:"98"},"BRZ 2.4":{l:9.5,f:"98"},
+  "Solterra Electric":{l:0,f:"Electric"}
+ },
+ "Tesla":{
+  "Model 3 Standard":{l:0,f:"Electric"},"Model 3 Long Range":{l:0,f:"Electric"},
+  "Model 3 Performance":{l:0,f:"Electric"},"Model Y Standard":{l:0,f:"Electric"},
+  "Model Y Long Range":{l:0,f:"Electric"},"Model Y Performance":{l:0,f:"Electric"},
+  "Model S":{l:0,f:"Electric"},"Model X":{l:0,f:"Electric"}
+ },
+ "Toyota":{
+  "Yaris 1.5":{l:6.5,f:"92"},"Yaris Cross 1.5 Hybrid":{l:5.3,f:"95"},
+  "Vios 1.5":{l:7.8,f:"92"},"Corolla Altis 1.8 Hybrid":{l:5.0,f:"95"},
+  "Corolla Altis 2.0 GR Sport":{l:7.5,f:"95"},"Camry 2.5 Hybrid":{l:5.5,f:"95"},
+  "C-HR 1.8 Hybrid":{l:5.6,f:"95"},"C-HR GR Sport 2.0":{l:7.0,f:"95"},
+  "Harrier 2.0T":{l:8.0,f:"95"},"Harrier Hybrid":{l:5.8,f:"95"},
+  "RAV4 2.5 Hybrid":{l:6.0,f:"95"},"RAV4 PHEV":{l:2.0,f:"95",phev:true},
+  "Fortuner 2.8 Diesel":{l:10.2,f:"Diesel"},"Fortuner 2.7 Petrol":{l:12.5,f:"95"},
+  "Alphard 2.5 Hybrid":{l:7.6,f:"95"},"Vellfire 2.5 Hybrid":{l:7.6,f:"95"},
+  "Veloz 1.5":{l:8.2,f:"92"},"Avanza 1.5":{l:8.5,f:"92"},
+  "Innova 2.0":{l:10.5,f:"95"},"Innova Zenix 2.0 Hybrid":{l:6.5,f:"95"},
+  "Prius 2.0 Hybrid":{l:4.4,f:"95"},"Prius PHEV":{l:1.0,f:"95",phev:true},
+  "GR86 2.4":{l:10.0,f:"98"},"GR Yaris 1.6T":{l:9.5,f:"98"},
+  "GR Supra 3.0T":{l:11.5,f:"98"},"LandCruiser 300 3.5T":{l:15.0,f:"98"},
+  "bZ4X Electric":{l:0,f:"Electric"}
+ },
+ "Volkswagen":{
+  "Polo 1.0 TSI":{l:6.5,f:"98"},"Polo GTI 2.0T":{l:8.5,f:"98"},
+  "Golf 1.5 TSI":{l:6.2,f:"98"},"Golf GTI 2.0T":{l:9.0,f:"98"},
+  "Golf R 2.0T":{l:9.2,f:"98"},"Golf GTE PHEV":{l:2.5,f:"98",phev:true},
+  "Arteon 2.0 TSI":{l:8.0,f:"98"},"Tiguan 1.5 TSI":{l:7.5,f:"98"},
+  "Tiguan R 2.0T":{l:10.5,f:"98"},"Tiguan eHybrid PHEV":{l:2.2,f:"98",phev:true},
+  "T-Cross 1.0 TSI":{l:7.2,f:"98"},"T-Roc 1.5 TSI":{l:7.8,f:"98"},
+  "T-Roc R 2.0T":{l:9.5,f:"98"},"Passat 1.4 TSI":{l:6.8,f:"98"},
+  "Touareg 3.0T":{l:11.5,f:"98"},"ID.3 Electric":{l:0,f:"Electric"},
+  "ID.4 Electric":{l:0,f:"Electric"},"ID.7 Electric":{l:0,f:"Electric"}
+ },
+ "Volvo":{
+  "XC40 B3":{l:6.8,f:"95"},"XC40 B4":{l:7.8,f:"95"},
+  "XC40 Recharge PHEV":{l:2.1,f:"95",phev:true},"XC60 B5":{l:8.2,f:"95"},
+  "XC60 T6 Recharge PHEV":{l:2.5,f:"95",phev:true},"XC60 T8 Recharge PHEV":{l:2.3,f:"95",phev:true},
+  "XC90 B6":{l:10.5,f:"95"},"XC90 T8 Recharge PHEV":{l:2.8,f:"95",phev:true},
+  "S60 B4":{l:7.5,f:"95"},"S60 T8 Recharge PHEV":{l:2.0,f:"95",phev:true},
+  "S90 B6":{l:8.5,f:"95"},"V60 B4":{l:7.5,f:"95"},
+  "C40 Electric":{l:0,f:"Electric"},"EX30 Electric":{l:0,f:"Electric"},
+  "EX90 Electric":{l:0,f:"Electric"}
+ }
+};
+
+const STATIONS={
+  Shell:{color:"#e2231a"},Caltex:{color:"#005daa"},SPC:{color:"#e87722"},
+  Esso:{color:"#003087"},BP:{color:"#009900"},Sinopec:{color:"#cc0000"},
+};
+let selStations=new Set(Object.keys(STATIONS));
+
+// fuel grade matching map — explicit, not substring hacks
+const FUEL_MATCH={
+  "92": g=>g==="92"||g.toLowerCase().includes("unleaded 92")||g.toLowerCase().includes("synergy 92")||g==="92",
+  "95": g=>g==="95"||g.toLowerCase().includes("fuelsave 95")||g.toLowerCase().includes("unleaded 95")||
+           g.toLowerCase().includes("synergy 95")||g.toLowerCase().includes("fuelsave95"),
+  "98": g=>g==="98"||g.toLowerCase().includes("98")||g.toLowerCase().includes("platinum")||
+           g.toLowerCase().includes("v-power"),
+  "Diesel":g=>g.toLowerCase().includes("diesel"),
+};
+
+const S={car:null,fuel:null,orig:null,dest:null,routes:[],prices:null,priceTs:null};
+let mapObj=null,rLayers=[],mMarkers=[];
+let ddT={},routeAbort=null;
+let activeDd=null;
+
+// ── localStorage persistence ────────────────────────────────────────────
+function savePref(){
+  try{localStorage.setItem('fuelsg_make',document.getElementById('selMake').value);
+      localStorage.setItem('fuelsg_model',document.getElementById('selModel').value);
+      if(S.fuel)localStorage.setItem('fuelsg_fuel',S.fuel);}catch{}
+}
+function loadPref(){
+  try{
+    const make=localStorage.getItem('fuelsg_make');
+    const model=localStorage.getItem('fuelsg_model');
+    const fuel=localStorage.getItem('fuelsg_fuel');
+    if(make&&CARS[make]){
+      document.getElementById('selMake').value=make;onMake();
+      if(model&&CARS[make][model]){
+        document.getElementById('selModel').value=model;onModel();
+      }
+    }
+    if(fuel)pickFuel(fuel);
+  }catch{}
+}
+
+// ── Station grid ────────────────────────────────────────────────────────
+function buildStations(){
+  const g=document.getElementById('stationGrid');
+  Object.entries(STATIONS).forEach(([name,{color}])=>{
+    const el=document.createElement('label');
+    el.className='st-toggle on';el.style.background=color;el.dataset.name=name;
+    const cb=document.createElement('input');
+    cb.type='checkbox';cb.checked=true;
+    cb.onchange=()=>toggleStation(name,cb,el);
+    el.appendChild(cb);
+    const dot=document.createElement('span');dot.className='dot';
+    dot.style.cssText='width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.7);flex-shrink:0';
+    el.appendChild(dot);
+    el.appendChild(document.createTextNode(' '+name));
+    g.appendChild(el);
+  });
+}
+function toggleStation(name,cb,el){
+  if(cb.checked){selStations.add(name);el.classList.add('on');el.style.background=STATIONS[name].color;el.style.color='';}
+  else{selStations.delete(name);el.classList.remove('on');el.style.background='#f8fafc';el.style.color='#94a3b8';}
+  document.getElementById('noStWarn').classList.toggle('show',selStations.size===0);
+  if(S.routes.length)renderCosts();
+  if(S.prices)hlPrices();
+}
+
+// ── Car ─────────────────────────────────────────────────────────────────
+function buildMakes(){
+  const el=document.getElementById('selMake');
+  Object.keys(CARS).sort().forEach(m=>{
+    const o=document.createElement('option');o.value=m;o.textContent=m;el.appendChild(o);
+  });
+}
+function onMake(){
+  const make=document.getElementById('selMake').value;
+  const mel=document.getElementById('selModel');
+  mel.innerHTML='<option value="">— Model —</option>';mel.disabled=!make;
+  S.car=null;document.getElementById('carInfo').className='car-info';
+  document.getElementById('phevNote').className='phev-note';
+  setPillsDisabled(true);
+  if(!make)return;
+  Object.keys(CARS[make]).sort().forEach(m=>{
+    const o=document.createElement('option');o.value=m;o.textContent=m;mel.appendChild(o);
+  });
+  savePref();
+}
+function onModel(){
+  const mk=document.getElementById('selMake').value;
+  const mo=document.getElementById('selModel').value;
+  if(!mk||!mo){S.car=null;return;}
+  const d=CARS[mk][mo];S.car={make:mk,model:mo,...d};
+  const ci=document.getElementById('carInfo');
+  if(d.f==='Electric'){
+    ci.innerHTML=`<strong>${mk} ${mo}</strong> — Electric ⚡ No fuel cost calculation.`;
+    setPillsDisabled(true);
+    S.fuel='Electric';
+    document.getElementById('phevNote').className='phev-note';
+    clearPriceHighlights();
+  } else {
+    ci.innerHTML=`<strong>${mk} ${mo}</strong> · <strong>${d.l} L/100km</strong> · Recommended: <strong>${d.f}</strong>`;
+    setPillsDisabled(false);
+    pickFuel(d.f);
+    document.getElementById('phevNote').className=d.phev?'phev-note show':'phev-note';
+  }
+  ci.className='car-info show';
+  if(S.routes.length)renderCosts();
+  savePref();
+}
+function setPillsDisabled(dis){
+  document.querySelectorAll('.pill').forEach(p=>{p.disabled=dis;p.classList.remove('on');});
+}
+
+// ── Fuel ────────────────────────────────────────────────────────────────
+function pickFuel(f){
+  S.fuel=f;
+  document.querySelectorAll('.pill').forEach(p=>p.classList.toggle('on',p.dataset.f===f));
+  if(S.routes.length)renderCosts();
+  if(S.prices)hlPrices();
+  savePref();
+}
+
+// ── Autocomplete ────────────────────────────────────────────────────────
+function onTyping(f){
+  const inp=document.getElementById(f==='orig'?'iOrig':'iDest');
+  const v=inp.value.trim();
+  inp.classList.remove('ok');S[f]=null;
+  document.getElementById(f==='orig'?'clrOrig':'clrDest').classList.toggle('show',v.length>0);
+  clearTimeout(ddT[f]);
+  if(v.length>=3){ddT[f]=setTimeout(()=>fetchDd(f,v),300);}
+  else closeDd(f);
+}
+async function fetchDd(f,q){
+  try{
+    const r=await fetch('/api/search?q='+encodeURIComponent(q),{headers:{'bypass-tunnel-reminder':'true'}});
+    const d=await r.json();
+    if(d.results&&d.results.length)showDd(f,d.results);else closeDd(f);
+  }catch{closeDd(f);}
+}
+function showDd(f,results){
+  const inp=document.getElementById(f==='orig'?'iOrig':'iDest');
+  const ddId='dd'+(f==='orig'?'Orig':'Dest');
+  const dd=document.getElementById(ddId);
+  // Position dropdown using fixed coordinates to avoid mobile keyboard clipping
+  const rect=inp.getBoundingClientRect();
+  dd.style.left=rect.left+'px';
+  dd.style.top=rect.bottom+'px';
+  dd.style.width=rect.width+'px';
+  dd.innerHTML='';
+  results.forEach(item=>{
+    const div=document.createElement('div');div.className='ddi';
+    // Safe textContent — no innerHTML with external data
+    const main=document.createElement('div');main.className='ddi-main';
+    main.textContent=item.label;
+    const sub=document.createElement('div');sub.className='ddi-sub';
+    sub.textContent=item.address;
+    div.appendChild(main);if(item.address!==item.label)div.appendChild(sub);
+    div.onclick=()=>pickLoc(f,item);
+    dd.appendChild(div);
+  });
+  dd.style.display='block';activeDd=f;
+}
+function closeDd(f){
+  const ddId='dd'+(f==='orig'?'Orig':'Dest');
+  document.getElementById(ddId).style.display='none';
+  if(activeDd===f)activeDd=null;
+}
+function pickLoc(f,item){
+  const inp=document.getElementById(f==='orig'?'iOrig':'iDest');
+  inp.value=item.label;inp.classList.add('ok');
+  S[f]={lat:item.lat,lon:item.lon,label:item.label};
+  closeDd(f);maybeRoute();
+}
+function clrLoc(f){
+  const inp=document.getElementById(f==='orig'?'iOrig':'iDest');
+  inp.value='';inp.classList.remove('ok');S[f]=null;closeDd(f);
+  document.getElementById(f==='orig'?'clrOrig':'clrDest').classList.remove('show');
+}
+document.addEventListener('click',e=>{
+  if(!e.target.closest('#wOrig')&&!e.target.closest('#ddOrig'))closeDd('orig');
+  if(!e.target.closest('#wDest')&&!e.target.closest('#ddDest'))closeDd('dest');
+});
+
+// ── Swap locations ──────────────────────────────────────────────────────
+function swapLocations(){
+  const ov=document.getElementById('iOrig').value;
+  const dv=document.getElementById('iDest').value;
+  const oc=S.orig,dc=S.dest;
+  document.getElementById('iOrig').value=dv;
+  document.getElementById('iDest').value=ov;
+  document.getElementById('iOrig').classList.toggle('ok',!!dc);
+  document.getElementById('iDest').classList.toggle('ok',!!oc);
+  document.getElementById('clrOrig').classList.toggle('show',!!dv);
+  document.getElementById('clrDest').classList.toggle('show',!!ov);
+  S.orig=dc;S.dest=oc;
+  if(S.orig&&S.dest)planRoute();
+}
+
+// ── GPS ─────────────────────────────────────────────────────────────────
+function useGPS(){
+  if(!navigator.geolocation){alert('Geolocation not supported by your browser.');return;}
+  const btn=document.querySelector('.gps-btn');
+  btn.textContent='⏳';btn.disabled=true;
+  navigator.geolocation.getCurrentPosition(async pos=>{
+    const {latitude:lat,longitude:lon}=pos.coords;
+    try{
+      // Reverse geocode via Nominatim
+      const r=await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`,
+        {headers:{'User-Agent':'FuelSG/1.0'}});
+      const d=await r.json();
+      const label=d.display_name?d.display_name.split(',').slice(0,3).join(',').trim():`${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+      document.getElementById('iOrig').value=label;
+      document.getElementById('iOrig').classList.add('ok');
+      document.getElementById('clrOrig').classList.add('show');
+      S.orig={lat,lon,label};
+      maybeRoute();
+    }catch{
+      const fbLabel=lat.toFixed(5)+', '+lon.toFixed(5);
+      S.orig={lat:lat,lon:lon,label:fbLabel};
+      const inp2=document.getElementById('iOrig');
+      inp2.value=fbLabel;inp2.classList.add('ok');
+      document.getElementById('clrOrig').classList.add('show');
+    }
+    btn.textContent='📍';btn.disabled=false;
+  },err=>{
+    alert('Could not get location: '+err.message);
+    btn.textContent='📍';btn.disabled=false;
+  },{timeout:10000});
+}
+
+// ── Auto-route ──────────────────────────────────────────────────────────
+function maybeRoute(){if(S.orig&&S.dest)planRoute();}
+
+async function planRoute(){
+  // Cancel any in-flight request
+  if(routeAbort){routeAbort.abort();}
+  routeAbort=new AbortController();
+  const sig=routeAbort.signal;
+
+  showBar('Calculating routes...', false);
+  initMap();clearLayers();
+
+  mMarkers.push(
+    L.marker([S.orig.lat,S.orig.lon]).addTo(mapObj).bindPopup('📍 '+S.orig.label),
+    L.marker([S.dest.lat,S.dest.lon]).addTo(mapObj).bindPopup('🏁 '+S.dest.label)
+  );
+
+  try{
+    const eff=S.car&&S.car.f!=='Electric'?S.car.l:12;
+    const url=`/api/routes?slat=${encodeURIComponent(S.orig.lat)}&slon=${encodeURIComponent(S.orig.lon)}&dlat=${encodeURIComponent(S.dest.lat)}&dlon=${encodeURIComponent(S.dest.lon)}&efficiency=${eff}`;
+    const r=await fetch(url,{signal:sig,headers:{'bypass-tunnel-reminder':'true'}});
+    const d=await r.json();
+    if(d.error)throw new Error(d.error);
+    S.routes=d.routes;hideBar();renderRouteCards();
+  }catch(e){
+    if(e.name!=='AbortError')showBar(e.message,true);
+  }
+}
+
+// ── Map ─────────────────────────────────────────────────────────────────
+function initMap(){
+  const el=document.getElementById('map');
+  if(!mapObj){
+    el.classList.add('show');
+    mapObj=L.map('map').setView([1.3521,103.8198],12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      {attribution:'© OpenStreetMap'}).addTo(mapObj);
+  }else el.classList.add('show');
+}
+function clearLayers(){
+  rLayers.forEach(l=>mapObj.removeLayer(l));rLayers=[];
+  mMarkers.forEach(m=>mapObj.removeLayer(m));mMarkers=[];
+  document.getElementById('routeCards').innerHTML='';
+}
+
+// ── Route cards ─────────────────────────────────────────────────────────
+function renderRouteCards(){
+  const con=document.getElementById('routeCards');con.innerHTML='';
+  S.routes.forEach((route,i)=>{
+    const coords=route.geometry.coordinates.map(c=>[c[1],c[0]]);
+    const line=L.polyline(coords,{color:route.color,weight:i===0?6:4,opacity:i===0?.9:.5}).addTo(mapObj);
+    rLayers.push(line);
+    if(i===0)mapObj.fitBounds(line.getBounds(),{padding:[30,30]});
+    const card=document.createElement('div');
+    card.className='rc'+(i===0?' on':'');
+    card.style.setProperty('--c',route.color);
+    card.dataset.i=i;card.onclick=()=>selRoute(i,card);
+    con.appendChild(card);
+  });
+  renderCosts();
+}
+
+function renderCosts(){
+  document.querySelectorAll('.rc').forEach((card,i)=>{
+    const route=S.routes[i];if(!route)return;
+    let cHtml='';
+    if(S.fuel&&S.fuel!=='Electric'&&S.prices&&S.car){
+      if(selStations.size===0){
+        cHtml=`<div class="cost show" style="background:#fef2f2;color:#ef4444">Select a station to see cost</div>`;
+      } else {
+        const best=cheapest(S.fuel);
+        if(best){
+          const cost=(route.fuel_litres*best.price).toFixed(2);
+          cHtml=`<div class="cost show">~$${cost} · ${best.station} ${S.fuel} @ $${best.price.toFixed(2)}/L</div>`;
+        }
+      }
+    }
+    card.innerHTML=`
+      <div class="rl">${route.label}</div>
+      <div class="rs">
+        <div class="sr">
+          <div class="sb"><strong>${route.distance_km}km</strong>Dist</div>
+          <div class="sb"><strong>${route.duration_min}min</strong>Time</div>
+          <div class="sb"><strong>${route.fuel_litres}L</strong>Fuel</div>
+        </div>${cHtml}
+      </div>`;
+  });
+}
+
+function selRoute(idx,card){
+  rLayers.forEach((l,i)=>{l.setStyle({weight:i===idx?6:4,opacity:i===idx?.9:.4});if(i===idx)l.bringToFront();});
+  document.querySelectorAll('.rc').forEach(c=>c.classList.remove('on'));
+  card.classList.add('on');
+}
+
+// ── Status bar ──────────────────────────────────────────────────────────
+function showBar(msg,err){const s=document.getElementById('sbar');s.textContent=err?'⚠️ '+msg:msg;s.className='sbar'+(err?' err':'');s.style.display='block';}
+function hideBar(){document.getElementById('sbar').style.display='none';}
+
+// ── Prices ──────────────────────────────────────────────────────────────
+function cheapest(fuelType){
+  if(!S.prices||selStations.size===0)return null;
+  const matchFn=FUEL_MATCH[fuelType];if(!matchFn)return null;
+  let best=null;
+  for(const[station,info]of Object.entries(S.prices.stations)){
+    if(!selStations.has(station))continue;
+    for(const[grade,price]of Object.entries(info.prices)){
+      if(matchFn(grade)&&(!best||price<best.price))best={station,grade,price};
+    }
+  }
+  return best;
+}
+
+function clearPriceHighlights(){
+  document.querySelectorAll('.pr').forEach(r=>{
+    r.classList.remove('hl');
+    r.querySelector('.cheap')&&r.querySelector('.cheap').remove();
+  });
+}
+
+function hlPrices(){
+  clearPriceHighlights();
+  if(!S.prices||!S.fuel||S.fuel==='Electric')return;
+  const best=cheapest(S.fuel);if(!best)return;
+  document.querySelectorAll('.pr').forEach(r=>{
+    if(r.dataset.station===best.station&&r.dataset.grade===best.grade){
+      r.classList.add('hl');
+      const sp=document.createElement('span');sp.className='cheap';sp.textContent='✓ cheapest';
+      r.querySelector('.pv').appendChild(sp);
+    }
+  });
+}
+
+async function loadPrices(){
+  if(document.visibilityState!=='visible')return;
+  try{
+    const r=await fetch('/api/prices',{headers:{'bypass-tunnel-reminder':'true'}});S.prices=await r.json();S.priceTs=Date.now();
+    renderPrices();if(S.routes.length)renderCosts();
+  }catch(e){document.getElementById('pg').innerHTML=`<div style="color:#ef4444;font-size:.8rem;padding:8px">Error: ${e.message}</div>`;}
+}
+
+async function doRefresh(){
+  const pm=document.getElementById('pm');const prev=pm.textContent;
+  pm.innerHTML='<span class="spinner"></span> Refreshing...';
+  try{
+    const r=await fetch('/api/prices/refresh',{method:'POST',headers:{'bypass-tunnel-reminder':'true'}});
+    S.prices=await r.json();S.priceTs=Date.now();renderPrices();
+  }catch{pm.textContent=prev+' (refresh failed)';}
+}
+
+function renderPrices(){
+  const data=S.prices;
+  const ageH=S.priceTs?(Date.now()-S.priceTs)/3600000:0;
+  const pm=document.getElementById('pm');
+  pm.textContent='Updated: '+data.updated;
+  pm.className=ageH>12?'pm stale':'pm';
+  if(ageH>12)pm.textContent+=' ⚠️ May be outdated';
+
+  const pg=document.getElementById('pg');pg.innerHTML='';
+  for(const[name,info]of Object.entries(data.stations)){
+    const sc=document.createElement('div');sc.className='sc';
+
+    // Station header
+    const sh=document.createElement('div');sh.className='sh';
+    sh.style.background=info.color;
+    const nameSpan=document.createElement('span');nameSpan.textContent=name;
+    const bdgSpan=document.createElement('span');
+    bdgSpan.className=info.live?'blive':'bref';
+    bdgSpan.textContent=info.live?'LIVE':'Ref';
+    sh.appendChild(nameSpan);sh.appendChild(bdgSpan);
+
+    // Price rows
+    const body=document.createElement('div');body.className='sb2';
+    for(const[grade,price]of Object.entries(info.prices)){
+      const row=document.createElement('div');row.className='pr';
+      row.dataset.station=name;row.dataset.grade=grade;
+      const gs=document.createElement('span');gs.textContent=grade;
+      const ps=document.createElement('span');ps.className='pv';
+      ps.textContent='$'+price.toFixed(2);
+      row.appendChild(gs);row.appendChild(ps);
+      body.appendChild(row);
+    }
+    sc.appendChild(sh);sc.appendChild(body);
+    pg.appendChild(sc);
+  }
+  document.getElementById('pnote').textContent=data.note||'';
+  hlPrices();
+}
+
+// ── Init // ── Init ─────────────────────────────────────────────────────────────────
+buildMakes();buildStations();
+loadPrices();
+setInterval(()=>{if(document.visibilityState==='visible')loadPrices();},60*60*1000);
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible'&&S.priceTs&&Date.now()-S.priceTs>3600000)loadPrices();
+});
+loadPref();
+</script>
+</body>
+</html>
